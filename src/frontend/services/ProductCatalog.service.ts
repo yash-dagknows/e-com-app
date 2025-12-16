@@ -28,6 +28,11 @@ const ProductCatalogService = () => ({
     );
   },
   async getProduct(id: string, currencyCode = 'USD') {
+    // Guard against undefined or empty product ID
+    if (!id || id === 'undefined' || id === '') {
+      throw new Error(`Invalid product ID: ${id}`);
+    }
+    
     const product = await ProductCatalogGateway.getProduct(id);
 
     return {

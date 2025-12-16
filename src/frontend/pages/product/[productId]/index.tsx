@@ -50,7 +50,8 @@ const ProductDetail: NextPage = () => {
   } = useQuery({
       queryKey: ['product', productId, 'selectedCurrency', selectedCurrency],
       queryFn: () => ApiGateway.getProduct(productId, selectedCurrency),
-      enabled: !!productId,
+      // Only enable query when productId is a valid non-empty string
+      enabled: !!productId && productId !== 'undefined' && typeof productId === 'string',
     }
   ) as { data: Product };
 

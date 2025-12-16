@@ -14,6 +14,11 @@ const handler = async ({ method, query }: NextApiRequest, res: NextApiResponse<T
         case 'GET': {
             const { productId = '' } = query;
 
+            // Guard against undefined or empty productId
+            if (!productId || productId === 'undefined' || productId === '') {
+                return res.status(400).json('' as string);
+            }
+
             const averageScore = await ProductReviewService.getAverageProductReviewScore(productId as string);
 
             return res.status(200).json(averageScore);
