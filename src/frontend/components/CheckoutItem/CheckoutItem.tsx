@@ -29,7 +29,8 @@ const CheckoutItem = ({
   return (
     <S.CheckoutItem data-cy={CypressFields.CheckoutItem}>
       <S.ItemDetails>
-        <S.ItemImage src={"/images/products/" + picture} alt={name}/>
+        {/* Skip image rendering if picture is missing to prevent `/images/products/undefined` requests */}
+        {picture && <S.ItemImage src={'/images/products/' + picture} alt={name} />}
         <S.Details>
           <S.ItemName>{name}</S.ItemName>
           <p>Quantity: {quantity}</p>

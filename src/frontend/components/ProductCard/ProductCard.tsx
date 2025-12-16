@@ -33,6 +33,13 @@ const ProductCard = ({
   const [imageSrc, setImageSrc] = useState<string>('');
 
   useEffect(() => {
+    // If there is no product picture defined, avoid making a request that
+    // would result in `/images/products/undefined` and simply clear the image.
+    if (!picture) {
+      setImageSrc('');
+      return;
+    }
+
     const headers = new Headers();
     headers.append('x-envoy-fault-delay-request', imageSlowLoad.toString());
     headers.append('Cache-Control', 'no-cache')
@@ -50,7 +57,8 @@ const ProductCard = ({
   return (
     <S.Link href={`/product/${id}`}>
       <S.ProductCard data-cy={CypressFields.ProductCard}>
-        <S.Image $src={imageSrc} />
+        {/* Avoid rendering a broken image when no picture is available */}
+        {imageSrc && <S.Image $src={imageSrc} />}
         <div>
           <S.ProductName>{name}</S.ProductName>
           <S.ProductPrice>

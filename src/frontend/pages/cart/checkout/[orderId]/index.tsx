@@ -82,7 +82,13 @@ const Checkout: NextPage = () => {
 
                   return (
                     <S.OrderItem key={item.productId}>
-                      <S.ItemImage src={"/images/products/" + item.product.picture} alt={item.product.name}/>
+                      {/* Guard against missing product picture to avoid `/images/products/undefined` */}
+                      {item.product.picture && (
+                        <S.ItemImage
+                          src={'/images/products/' + item.product.picture}
+                          alt={item.product.name}
+                        />
+                      )}
                       <S.ItemDetails>
                         <S.ItemName>{item.product.name}</S.ItemName>
                         <S.ItemQuantity>Quantity: {item.quantity}</S.ItemQuantity>
