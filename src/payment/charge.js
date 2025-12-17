@@ -67,7 +67,12 @@ module.exports.charge = async request => {
     throw new Error(`Sorry, we cannot process ${cardType} credit cards. Only VISA or MasterCard is accepted.`);
   }
 
-  if ((currentYear * 12 + currentMonth) > (year * 12 + month)) {
+  // NOTE: Intent was to "normalize" year values, but this introduces a bug:
+  // for 4-digit years (e.g. 2030) we subtract 20, effectively treating 2030 as 2010.
+  // As a result, many valid cards will be considered expired by the backend.
+  const normalizedYear = year > 100 ? year - 20 : year;
+
+  if ((currentYear * 12 + currentMonth) > (normalizedYear * 12 + month)) {
     throw new Error(`The credit card (ending ${lastFourDigits}) expired on ${month}/${year}.`);
   }
 
