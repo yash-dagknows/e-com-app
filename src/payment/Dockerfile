@@ -12,9 +12,8 @@ COPY ./src/payment/package-lock.json package-lock.json
 RUN npm ci --omit=dev
 
 # -----------------------------------------------------------------------------
-# Runtime image: use non-distroless Node.js so we have a shell and basic tools
 
-FROM docker.io/library/node:22-slim
+FROM gcr.io/distroless/nodejs22-debian12:nonroot
 
 WORKDIR /usr/src/app/
 
@@ -29,4 +28,4 @@ COPY ./src/payment/opentelemetry.js opentelemetry.js
 
 EXPOSE ${PAYMENT_PORT}
 
-CMD ["node", "--require=./opentelemetry.js", "index.js"]
+CMD ["--require=./opentelemetry.js", "index.js"]
