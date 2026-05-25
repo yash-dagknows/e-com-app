@@ -4,6 +4,9 @@
 #include <cstdlib>
 #include <iostream>
 #include <math.h>
+#include <chrono>
+#include <random>
+#include <thread>
 #include <demo.grpc.pb.h>
 #include <grpc/health/v1/health.grpc.pb.h>
 
@@ -187,6 +190,12 @@ class CurrencyService final : public oteldemo::CurrencyService::Service
     auto scope = get_tracer("currency")->WithActiveSpan(span);
 
     span->AddEvent("Processing currency conversion request");
+
+    {
+      static thread_local std::mt19937 rng(std::random_device{}());
+      std::uniform_int_distribution<int> dist(200, 500);
+      std::this_thread::sleep_for(std::chrono::milliseconds(dist(rng)));
+    }
 
     try {
       // Do the conversion work
