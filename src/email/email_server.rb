@@ -58,10 +58,21 @@ error do
   OpenTelemetry::Trace.current_span.record_exception(env['sinatra.error'])
 end
 
+PRODUCT_LABELS = {
+  "EMOJI42STAR" => "🔭 Stargazer's Companion — café edition",
+}.freeze
+
 def send_email(data)
   # create and start a manual span
   tracer = OpenTelemetry.tracer_provider.tracer('email')
   tracer.in_span("send_email") do |span|
+    first_item_id = data.order.items.first&.item&.product_id
+    if first_item_id && PRODUCT_LABELS.key?(first_item_id)
+      product_label = PRODUCT_LABELS[first_item_id]
+      subject_suffix = product_label.encode("US-ASCII")
+      span.set_attribute("app.email.subject_suffix", subject_suffix)
+    end
+
     # Check if memory leak flag is enabled
     client = OpenFeature::SDK.build_client
     memory_leak_multiplier = client.fetch_number_value(flag_key: "emailMemoryLeak", default_value: 0)

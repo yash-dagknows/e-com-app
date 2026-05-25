@@ -119,6 +119,18 @@
         "nanos": 990000000
       },
       "categories": ["books"]
+    },
+    {
+      "id": "EMOJI42STAR",
+      "name": "🔭 Stargazer's Companion — café edition",
+      "description": "A limited-edition pocket guide bundled with our most beloved telescope accessory. Features hand-illustrated star charts and a leather-bound journal. Designed for the modern astronomer who appreciates fine craftsmanship and a great cup of coffee under the stars.",
+      "picture": "NationalParkFoundationExplorascope.jpg",
+      "priceUsd": {
+        "currencyCode": "USD",
+        "units": 42,
+        "nanos": 950000000
+      },
+      "categories": ["accessories", "books"]
     }
   ]
 }
