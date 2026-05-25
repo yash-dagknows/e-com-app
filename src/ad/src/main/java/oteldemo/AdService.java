@@ -39,6 +39,7 @@ import oteldemo.Demo.AdRequest;
 import oteldemo.Demo.AdResponse;
 import oteldemo.problempattern.GarbageCollectionTrigger;
 import oteldemo.problempattern.CPULoad;
+import oteldemo.problempattern.HeapPressure;
 import dev.openfeature.contrib.providers.flagd.FlagdOptions;
 import dev.openfeature.contrib.providers.flagd.FlagdProvider;
 import dev.openfeature.sdk.Client;
@@ -135,6 +136,7 @@ public final class AdService {
     private static final String AD_FAILURE = "adFailure";
     private static final String AD_MANUAL_GC_FEATURE_FLAG = "adManualGc";
     private static final String AD_HIGH_CPU_FEATURE_FLAG = "adHighCpu";
+    private static final String AD_GC_THRASH_FEATURE_FLAG = "adGcThrash";
     private static final Client ffClient = OpenFeatureAPI.getInstance().getClient();
     
     private AdServiceImpl() {}
@@ -170,6 +172,9 @@ public final class AdService {
 
         CPULoad cpuload = CPULoad.getInstance();
         cpuload.execute(ffClient.getBooleanValue(AD_HIGH_CPU_FEATURE_FLAG, false, evaluationContext));
+
+        HeapPressure heapPressure = HeapPressure.getInstance();
+        heapPressure.execute(ffClient.getBooleanValue(AD_GC_THRASH_FEATURE_FLAG, false, evaluationContext));
 
         span.setAttribute("app.ads.contextKeys", req.getContextKeysList().toString());
         span.setAttribute("app.ads.contextKeys.count", req.getContextKeysCount());

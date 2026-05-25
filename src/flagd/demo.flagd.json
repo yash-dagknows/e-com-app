@@ -145,6 +145,15 @@
         "off": false
       },
       "defaultVariant": "off"
+    },
+    "adGcThrash": {
+      "description": "Ad service allocates large objects per request, causing heap churn and frequent minor GCs (sawtooth pattern).",
+      "state": "ENABLED",
+      "variants": {
+        "on": true,
+        "off": false
+      },
+      "defaultVariant": "off"
     }
   }
 }
