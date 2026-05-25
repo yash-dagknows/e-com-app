@@ -346,7 +346,9 @@ func (cs *checkout) PlaceOrder(ctx context.Context, req *pb.PlaceOrderRequest) (
 	shippingTrackingAttribute := attribute.String("app.shipping.tracking.id", shippingTrackingID)
 	span.AddEvent("shipped", trace.WithAttributes(shippingTrackingAttribute))
 
-	_ = cs.emptyUserCart(ctx, req.UserId)
+	go func() {
+		_ = cs.emptyUserCart(ctx, req.UserId)
+	}()
 
 	orderResult := &pb.OrderResult{
 		OrderId:            orderID.String(),
