@@ -136,6 +136,15 @@
         "10000x": 10000
       },
       "defaultVariant": "off"
+    },
+    "paymentRetryStorm": {
+      "description": "Checkout retries failed payment charges 5x with no backoff. Pair with paymentFailure >= 25% to see the storm.",
+      "state": "ENABLED",
+      "variants": {
+        "on": true,
+        "off": false
+      },
+      "defaultVariant": "off"
     }
   }
 }

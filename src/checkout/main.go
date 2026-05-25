@@ -540,9 +540,24 @@ func (cs *checkout) chargeCard(ctx context.Context, amount *pb.Money, paymentInf
 		paymentService = pb.NewPaymentServiceClient(c)
 	}
 
-	paymentResp, err := paymentService.Charge(ctx, &pb.ChargeRequest{
-		Amount:     amount,
-		CreditCard: paymentInfo})
+	maxAttempts := 1
+	if cs.isFeatureFlagEnabled(ctx, "paymentRetryStorm") {
+		maxAttempts = 5
+	}
+
+	var paymentResp *pb.ChargeResponse
+	var err error
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		paymentResp, err = paymentService.Charge(ctx, &pb.ChargeRequest{
+			Amount:     amount,
+			CreditCard: paymentInfo})
+		if err == nil {
+			break
+		}
+		if maxAttempts > 1 && attempt < maxAttempts {
+			logger.Info(fmt.Sprintf("payment charge failed (attempt %d/%d), retrying: %v", attempt, maxAttempts, err))
+		}
+	}
 	if err != nil {
 		return "", fmt.Errorf("could not charge the card: %+v", err)
 	}
