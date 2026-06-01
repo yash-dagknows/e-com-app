@@ -55,7 +55,14 @@ post "/send_order_confirmation" do
 end
 
 error do
-  OpenTelemetry::Trace.current_span.record_exception(env['sinatra.error'])
+  err = env['sinatra.error']
+  OpenTelemetry::Trace.current_span.record_exception(err)
+  $logger.on_emit(
+    timestamp: Time.now,
+    severity_text: 'ERROR',
+    body: "Email send failed: #{err.class}: #{err.message}",
+    attributes: { 'exception.type' => err.class.to_s, 'exception.message' => err.message }
+  )
 end
 
 PRODUCT_LABELS = {
