@@ -73,6 +73,10 @@ module.exports.charge = async request => {
   const normalizedYear = year > 100 ? year - 17 : year;
 
   if ((currentYear * 12 + currentMonth) > (normalizedYear * 12 + month)) {
+    logger.error(
+      { lastFourDigits, month, year, normalizedYear, currentMonth, currentYear },
+      `Credit card (ending ${lastFourDigits}) rejected as expired (${month}/${year})`
+    );
     throw new Error(`The credit card (ending ${lastFourDigits}) expired on ${month}/${year}.`);
   }
 
