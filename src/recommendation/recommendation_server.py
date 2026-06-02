@@ -7,11 +7,13 @@
 # Python
 import os
 import random
+import time
 from concurrent import futures
 
 # Pip
 import grpc
 from opentelemetry import trace, metrics
+from opentelemetry.trace import Status, StatusCode
 from opentelemetry._logs import set_logger_provider
 from opentelemetry.exporter.otlp.proto.grpc._log_exporter import (
     OTLPLogExporter,
@@ -41,19 +43,47 @@ first_run = True
 
 class RecommendationService(demo_pb2_grpc.RecommendationServiceServicer):
     def ListRecommendations(self, request, context):
-        prod_list = get_product_list(request.product_ids)
         span = trace.get_current_span()
-        span.set_attribute("app.products_recommended.count", len(prod_list))
-        logger.info(f"Receive ListRecommendations for product ids:{prod_list}")
+        context_size = len(request.product_ids)
+        span.set_attribute("app.recommendation.context_size", context_size)
 
-        # build and return response
-        response = demo_pb2.ListRecommendationsResponse()
-        response.product_ids.extend(prod_list)
+        try:
+            # Synthetic scenario: O(n^2) workload for context_size > 10.
+            # Each outer iteration sleeps 20ms; at context_size=12 that's ~240ms
+            # which exceeds the default gRPC deadline of 200ms.
+            if context_size > 10:
+                logger.warning(
+                    "recommendation slow-path triggered for context_size=%d (will likely exceed deadline)",
+                    context_size,
+                    extra={"context_size": context_size},
+                )
+                span.add_event("slow_path_entered", attributes={"context_size": context_size})
+                for _ in range(context_size):
+                    _ = sum(i * i for i in range(context_size * 100))
+                    time.sleep(0.020)
 
-        # Collect metrics for this service
-        rec_svc_metrics["app_recommendations_counter"].add(len(prod_list), {'recommendation.type': 'catalog'})
+            prod_list = get_product_list(request.product_ids)
+            span.set_attribute("app.products_recommended.count", len(prod_list))
+            logger.info(f"Receive ListRecommendations for product ids:{prod_list}")
 
-        return response
+            # build and return response
+            response = demo_pb2.ListRecommendationsResponse()
+            response.product_ids.extend(prod_list)
+
+            # Collect metrics for this service
+            rec_svc_metrics["app_recommendations_counter"].add(len(prod_list), {'recommendation.type': 'catalog'})
+
+            return response
+
+        except Exception as e:
+            span.record_exception(e)
+            span.set_status(Status(StatusCode.ERROR, str(e)))
+            logger.error(
+                "recommendation failed for context_size=%d: %s",
+                context_size, e,
+                extra={"context_size": context_size, "exception_class": type(e).__name__},
+            )
+            raise
 
     def Check(self, request, context):
         return health_pb2.HealthCheckResponse(
