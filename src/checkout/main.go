@@ -346,9 +346,17 @@ func (cs *checkout) PlaceOrder(ctx context.Context, req *pb.PlaceOrderRequest) (
 	shippingTrackingAttribute := attribute.String("app.shipping.tracking.id", shippingTrackingID)
 	span.AddEvent("shipped", trace.WithAttributes(shippingTrackingAttribute))
 
-	go func() {
-		_ = cs.emptyUserCart(ctx, req.UserId)
-	}()
+	go func(userID string) {
+		asyncCtx := context.WithoutCancel(ctx)
+		_, span := otel.Tracer("checkout").Start(asyncCtx, "checkout.AsyncEmptyCart",
+			trace.WithAttributes(attribute.String("user.id", userID)))
+		defer span.End()
+		if err := cs.emptyUserCart(ctx, userID); err != nil {
+			span.RecordError(err)
+			span.SetStatus(otelcodes.Error, err.Error())
+			logger.Warn(fmt.Sprintf("async EmptyCart for user %s failed: %v", userID, err))
+		}
+	}(req.UserId)
 
 	orderResult := &pb.OrderResult{
 		OrderId:            orderID.String(),
