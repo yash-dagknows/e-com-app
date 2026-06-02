@@ -2,7 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use actix_web::{post, web, HttpResponse, Responder};
-use tracing::info;
+use std::time::Duration;
+use rand::Rng;
+use tracing::{info, warn};
+use opentelemetry::trace::{Status, TraceContextExt};
+use opentelemetry::Context as OtelContext;
+use opentelemetry::KeyValue;
 
 mod quote;
 use quote::create_quote_from_count;
@@ -45,7 +50,44 @@ pub async fn get_quote(req: web::Json<GetQuoteRequest>) -> impl Responder {
 }
 
 #[post("/ship-order")]
-pub async fn ship_order(_req: web::Json<ShipOrderRequest>) -> impl Responder {
+pub async fn ship_order(req: web::Json<ShipOrderRequest>) -> impl Responder {
+    // Synthetic scenario: 15% of orders take 2-3s and exceed the caller's deadline.
+    let delay_ms: u64 = {
+        let mut rng = rand::thread_rng();
+        if rng.gen_range(0..100) < 15 {
+            rng.gen_range(2000..3000)
+        } else {
+            rng.gen_range(5..50)
+        }
+    };
+
+    tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+
+    if delay_ms > 500 {
+        let cx = OtelContext::current();
+        let span = cx.span();
+        span.set_attribute(KeyValue::new(
+            "app.shipping.processing_ms",
+            delay_ms as i64,
+        ));
+        span.set_status(Status::error(format!(
+            "processing exceeded SLO: {}ms",
+            delay_ms
+        )));
+
+        let country = req
+            .address
+            .as_ref()
+            .map(|a| a.country.as_str())
+            .unwrap_or("unknown");
+        warn!(
+            processing_ms = delay_ms,
+            address_country = country,
+            "shipping handler took {}ms — likely past caller deadline",
+            delay_ms
+        );
+    }
+
     let tid = create_tracking_id();
     info!(
         name = "CreatingTrackingId",
