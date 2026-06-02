@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math/rand"
 	"net"
 	"net/http"
 	"os"
@@ -624,6 +625,23 @@ func (cs *checkout) shipOrder(ctx context.Context, address *pb.Address, items []
 }
 
 func (cs *checkout) sendToPostProcessor(ctx context.Context, result *pb.OrderResult) {
+	// Synthetic scenario: 10% of order events fail to publish to Kafka.
+	// Order is already charged and user has already seen success — failure is
+	// invisible to the user but accounting never sees the order.
+	if rand.Float64() < 0.10 {
+		_, span := otel.Tracer("checkout").Start(ctx, "checkout.KafkaPublishFailure",
+			trace.WithAttributes(attribute.String("order.id", result.OrderId)))
+		err := fmt.Errorf("kafka producer error: broker timeout simulated")
+		span.RecordError(err)
+		span.SetStatus(otelcodes.Error, err.Error())
+		span.End()
+		logger.Error(fmt.Sprintf(
+			"kafka publish failed for order_id=%s: %v — order processed but accounting will not see it",
+			result.OrderId, err,
+		))
+		return
+	}
+
 	message, err := proto.Marshal(result)
 	if err != nil {
 		logger.Error(fmt.Sprintf("Failed to marshal message to protobuf: %+v", err))
