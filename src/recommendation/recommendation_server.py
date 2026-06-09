@@ -53,14 +53,20 @@ class RecommendationService(demo_pb2_grpc.RecommendationServiceServicer):
             # which exceeds the default gRPC deadline of 200ms.
             if context_size > 10:
                 logger.warning(
-                    "recommendation slow-path triggered for context_size=%d (will likely exceed deadline)",
+                    "recommendation slow-path triggered for context_size=%d (will exceed server budget)",
                     context_size,
                     extra={"context_size": context_size},
                 )
                 span.add_event("slow_path_entered", attributes={"context_size": context_size})
-                for _ in range(context_size):
+                # Cap iterations so concurrent large-context requests cannot starve the gRPC thread pool.
+                iters = min(context_size, 30)
+                for _ in range(iters):
                     _ = sum(i * i for i in range(context_size * 100))
                     time.sleep(0.020)
+                context.abort(
+                    grpc.StatusCode.DEADLINE_EXCEEDED,
+                    f"ListRecommendations exceeded server budget for context_size={context_size}",
+                )
 
             prod_list = get_product_list(request.product_ids)
             span.set_attribute("app.products_recommended.count", len(prod_list))
