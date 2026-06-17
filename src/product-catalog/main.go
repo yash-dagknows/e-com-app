@@ -368,8 +368,28 @@ func (p *productCatalog) GetProduct(ctx context.Context, req *pb.GetProductReque
 func (p *productCatalog) SearchProducts(ctx context.Context, req *pb.SearchProductsRequest) (*pb.SearchProductsResponse, error) {
 	span := trace.SpanFromContext(ctx)
 
+	// Synthetic scenario: O(n)-with-sleep slow path for queries of length >= 4.
+	// At the demo's ~10-product catalog that's ~50-100ms; loud instrumentation
+	// emits a WARN log, span attributes for the query, and a slow_search_triggered event.
+	slowPath := len(req.Query) >= 4
+	if slowPath {
+		span.SetAttributes(
+			attribute.String("app.product_catalog.query", req.Query),
+			attribute.Int("app.product_catalog.query_len", len(req.Query)),
+		)
+		span.AddEvent("slow_search_triggered")
+		logger.WarnContext(ctx,
+			"search slow-path triggered",
+			slog.String("query", req.Query),
+			slog.Int("query_len", len(req.Query)),
+		)
+	}
+
 	var result []*pb.Product
 	for _, product := range catalog {
+		if slowPath {
+			time.Sleep(5 * time.Millisecond)
+		}
 		if strings.Contains(strings.ToLower(product.Name), strings.ToLower(req.Query)) ||
 			strings.Contains(strings.ToLower(product.Description), strings.ToLower(req.Query)) {
 			result = append(result, product)
