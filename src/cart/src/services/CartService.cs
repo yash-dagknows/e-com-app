@@ -1,9 +1,11 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 using System.Diagnostics;
+using System.Threading;
 using System.Threading.Tasks;
 using System;
 using Grpc.Core;
+using Microsoft.Extensions.Logging;
 using cart.cartstore;
 using OpenFeature;
 using Oteldemo;
@@ -17,12 +19,24 @@ public class CartService : Oteldemo.CartService.CartServiceBase
     private readonly ICartStore _badCartStore;
     private readonly ICartStore _cartStore;
     private readonly IFeatureClient _featureFlagHelper;
+    private readonly ILogger<CartService> _logger;
 
-    public CartService(ICartStore cartStore, ICartStore badCartStore, IFeatureClient featureFlagService)
+    // Synthetic scenario: simulate a fixed-size Redis connection pool. Under
+    // sustained concurrent AddItem load, callers beyond PoolSize are rejected
+    // with gRPC RESOURCE_EXHAUSTED after a short wait, modelling pool exhaustion.
+    private const int PoolSize = 5;
+    private static readonly SemaphoreSlim _poolGate = new(PoolSize, PoolSize);
+
+    public CartService(
+        ICartStore cartStore,
+        ICartStore badCartStore,
+        IFeatureClient featureFlagService,
+        ILogger<CartService> logger)
     {
         _badCartStore = badCartStore;
         _cartStore = cartStore;
         _featureFlagHelper = featureFlagService;
+        _logger = logger;
     }
 
     public override async Task<Empty> AddItem(AddItemRequest request, ServerCallContext context)
@@ -31,6 +45,19 @@ public class CartService : Oteldemo.CartService.CartServiceBase
         activity?.SetTag("app.user.id", request.UserId);
         activity?.SetTag("app.product.id", request.Item.ProductId);
         activity?.SetTag("app.product.quantity", request.Item.Quantity);
+
+        var acquired = await _poolGate.WaitAsync(TimeSpan.FromMilliseconds(100));
+        if (!acquired)
+        {
+            var inUse = PoolSize - _poolGate.CurrentCount;
+            _logger.LogWarning(
+                "redis pool exhausted: user_id={UserId} permits_in_use={InUse} pool_size={PoolSize}",
+                request.UserId, inUse, PoolSize);
+            activity?.SetTag("app.cart.pool_permits_in_use", inUse);
+            activity?.SetTag("app.cart.pool_size", PoolSize);
+            activity?.SetStatus(ActivityStatusCode.Error, "redis pool exhausted");
+            throw new RpcException(new Status(StatusCode.ResourceExhausted, "redis connection pool exhausted"));
+        }
 
         try
         {
@@ -43,6 +70,10 @@ public class CartService : Oteldemo.CartService.CartServiceBase
             activity?.AddException(ex);
             activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
             throw;
+        }
+        finally
+        {
+            _poolGate.Release();
         }
     }
 
