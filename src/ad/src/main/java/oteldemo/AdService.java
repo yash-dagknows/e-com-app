@@ -155,6 +155,34 @@ public final class AdService {
       // get the current span in context
       Span span = Span.current();
       try {
+        // Synthetic scenario: 25% of getAds calls bypass the real ad lookup
+        // and return a hardcoded FALLBACK_AD. The gRPC call succeeds (no
+        // error code), so the caller sees a successful response with
+        // degraded content. Loud instrumentation emits a WARN log, sets
+        // app.ad.source=fallback on the span, and records a
+        // circuit_breaker_fallback span event. The happy path below tags
+        // app.ad.source=catalog so the disambiguator is legible.
+        int bucket = Math.abs(req.hashCode()) % 100;
+        if (bucket < 25) {
+          span.setAttribute("app.ad.source", "fallback");
+          span.setAttribute("app.ad.bucket", bucket);
+          span.addEvent(
+              "circuit_breaker_fallback",
+              Attributes.of(AttributeKey.longKey("bucket"), (long) bucket));
+          logger.warn(
+              "ad circuit breaker tripped: returning fallback ad context_keys={} bucket={}",
+              req.getContextKeysList(), bucket);
+          Ad fallback = Ad.newBuilder()
+              .setRedirectUrl("/cart")
+              .setText("FALLBACK_AD - please retry")
+              .build();
+          AdResponse reply = AdResponse.newBuilder().addAds(fallback).build();
+          responseObserver.onNext(reply);
+          responseObserver.onCompleted();
+          return;
+        }
+        span.setAttribute("app.ad.source", "catalog");
+
         List<Ad> allAds = new ArrayList<>();
         AdRequestType adRequestType;
         AdResponseType adResponseType;
