@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using Oteldemo;
 using Microsoft.EntityFrameworkCore;
 using System.Diagnostics;
+using System.Collections.Concurrent;
 
 namespace Accounting;
 
@@ -33,6 +34,11 @@ internal class Consumer : IDisposable
     private bool _isListening;
     private DBContext? _dbContext;
     private static readonly ActivitySource MyActivitySource = new("Accounting.Consumer");
+
+    // Synthetic scenario state: track recent consume timestamps to model a
+    // throughput threshold beyond which per-message processing slows down.
+    private static readonly ConcurrentQueue<DateTime> _recentMessageTimestamps = new();
+    private const int LagThresholdMsgPerMinute = 20;
 
     public Consumer(ILogger<Consumer> logger)
     {
@@ -78,6 +84,43 @@ internal class Consumer : IDisposable
 
     private void ProcessMessage(Message<string, byte[]> message)
     {
+        // Synthetic scenario: when sustained throughput exceeds LagThresholdMsgPerMinute,
+        // inject a per-message delay to simulate consumer lag. Loud instrumentation
+        // emits a WARN log with the delay + window count + order_id, sets the current
+        // Activity to ERROR, and tags the disambiguating attributes.
+        var now = DateTime.UtcNow;
+        var cutoff = now.AddSeconds(-60);
+        while (_recentMessageTimestamps.TryPeek(out var oldest) && oldest < cutoff)
+        {
+            _recentMessageTimestamps.TryDequeue(out _);
+        }
+        _recentMessageTimestamps.Enqueue(now);
+        var recentCount = _recentMessageTimestamps.Count;
+
+        if (recentCount > LagThresholdMsgPerMinute)
+        {
+            var delayMs = Random.Shared.Next(50, 200);
+            Thread.Sleep(delayMs);
+
+            string orderId = "";
+            try
+            {
+                orderId = OrderResult.Parser.ParseFrom(message.Value).OrderId;
+            }
+            catch
+            {
+                // best-effort: the main parse below will surface real parse errors
+            }
+
+            _logger.LogWarning(
+                "accounting consumer lag: processing_ms={ProcessingMs} recent_msg_count={RecentCount} order_id={OrderId}",
+                delayMs, recentCount, orderId);
+            Activity.Current?.SetTag("app.accounting.processing_ms", delayMs);
+            Activity.Current?.SetTag("app.accounting.recent_msg_count", recentCount);
+            Activity.Current?.SetTag("app.accounting.order_id", orderId);
+            Activity.Current?.SetStatus(ActivityStatusCode.Error, $"consumer lag triggered at {recentCount} msg/min");
+        }
+
         try
         {
             var order = OrderResult.Parser.ParseFrom(message.Value);
